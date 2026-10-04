@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>复扫雷 Complexweeper</title>
+<style>
+  html,body{margin:0;padding:0}
+  body{background:#008080;font:12px/1.6 "MS Shell Dlg","Tahoma","Microsoft YaHei",sans-serif;color:#000;
+       padding:20px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+  /* ── 窗口外壳（Win95 风格，纯 CSS） */
+  #win{background:#c0c0c0;border:2px solid;border-color:#dfdfdf #000 #000 #dfdfdf;
+       box-shadow:2px 2px 0 rgba(0,0,0,.35);display:inline-block;user-select:none}
+  #titlebar{background:linear-gradient(90deg,#0a246a,#a6caf0);color:#fff;font-weight:bold;
+            padding:3px 4px 3px 6px;display:flex;align-items:center;gap:6px;
+            overflow:hidden;white-space:nowrap}
+  #titlebar .ico{width:16px;height:16px;image-rendering:pixelated}
+  #titlebar .sys{margin-left:auto;display:flex;gap:2px}
+  #titlebar .sys b{width:16px;height:14px;background:#c0c0c0;color:#000;border:1px solid;
+    border-color:#dfdfdf #000 #000 #dfdfdf;font:bold 9px/12px monospace;display:flex;
+    align-items:center;justify-content:center;cursor:default}
+  #menubar{display:flex;gap:0;padding:1px 2px;background:#c0c0c0}
+  #menubar .m{padding:2px 8px;position:relative;cursor:default}
+  #menubar .m.open,#menubar .m:hover{background:#000080;color:#fff}
+  .dropdown{display:none;position:absolute;left:0;top:100%;min-width:210px;background:#c0c0c0;
+    border:2px solid;border-color:#dfdfdf #000 #000 #dfdfdf;padding:2px;z-index:50;color:#000}
+  .m.open .dropdown{display:block}
+  .dropdown .it{padding:2px 20px 2px 10px;display:flex;justify-content:space-between;gap:18px;cursor:default;white-space:pre}
+  .dropdown .it:hover{background:#000080;color:#fff}
+  .dropdown .sep{height:1px;margin:2px 3px;background:#808080}
+  #screen{display:block;background:#c0c0c0}
+  /* ── 对话框 */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal.show{display:flex}
+  .dlg{background:#c0c0c0;border:2px solid;border-color:#dfdfdf #000 #000 #dfdfdf;
+       box-shadow:2px 2px 0 rgba(0,0,0,.35);min-width:280px;max-width:620px}
+  .dlg h3{margin:0;background:linear-gradient(90deg,#0a246a,#a6caf0);color:#fff;font-size:12px;
+          padding:3px 6px;display:flex}
+  .dlg h3 b{margin-left:auto;cursor:default;background:#c0c0c0;color:#000;border:1px solid;
+    border-color:#dfdfdf #000 #000 #dfdfdf;width:16px;height:14px;font:bold 9px/12px monospace;
+    display:flex;align-items:center;justify-content:center}
+  .dlg .body{padding:12px 14px;max-height:70vh;overflow:auto}
+  .dlg .row{display:flex;align-items:center;gap:8px;margin:5px 0}
+  .dlg .row label{width:74px;text-align:right}
+  .dlg input[type=number]{width:64px;font:12px monospace;background:#fff;border:2px solid;
+    border-color:#808080 #fff #fff #808080;padding:1px 3px}
+  .dlg .hint{color:#404040;margin-left:6px}
+  .dlg .foot{padding:0 14px 12px;display:flex;gap:8px;justify-content:flex-end}
+  button{font:12px "MS Shell Dlg",Tahoma,sans-serif;background:#c0c0c0;border:2px solid;
+    border-color:#dfdfdf #000 #000 #dfdfdf;padding:2px 12px;cursor:pointer}
+  button:active{border-color:#000 #dfdfdf #dfdfdf #000}
+  #err{color:#a00000;min-height:18px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px}
+  pre.help{white-space:pre-wrap;margin:0;font:12px/1.7 "MS Shell Dlg",Tahoma,"Microsoft YaHei",sans-serif}
+</style>
+</head>
+<body>
+
+<div id="win">
+  <div id="titlebar">
+    <img class="ico" id="appico" alt="">
+    <span>复扫雷 Complexweeper</span>
+    <span class="sys"><b>—</b><b>□</b><b>✕</b></span>
+  </div>
+  <div id="menubar">
+    <div class="m" data-menu="game">游戏(&amp;G)
+      <div class="dropdown">
+        <div class="it" data-act="new"><span>开局(&amp;N)</span><span>F2</span></div>
+        <div class="sep"></div>
+        <div class="it" data-act="beginner"><span>初级(&amp;B)</span><span>9×9 · 10 雷</span></div>
+        <div class="it" data-act="intermediate"><span>中级(&amp;I)</span><span>16×16 · 40 雷</span></div>
+        <div class="it" data-act="expert"><span>高级(&amp;E)</span><span>30×16 · 99 雷</span></div>
+        <div class="it" data-act="custom"><span>自定义(&amp;C)…</span><span></span></div>
+        <div class="sep"></div>
+        <div class="it" data-act="records"><span>最高分纪录(&amp;R)…</span><span></span></div>
+        <div class="sep"></div>
+        <div class="it" data-act="z1"><span>缩放 100%</span><span></span></div>
+        <div class="it" data-act="z2"><span>缩放 200%</span><span></span></div>
+        <div class="it" data-act="z3"><span>缩放 300%</span><span></span></div>
+        <div class="sep"></div>
+        <div class="it" data-act="exit"><span>退出(&amp;X)</span><span></span></div>
+      </div>
+    </div>
+    <div class="m" data-menu="help">帮助(&amp;H)
+      <div class="dropdown">
+        <div class="it" data-act="howto"><span>玩法与操作(&amp;H)</span><span></span></div>
+        <div class="it" data-act="about"><span>关于复扫雷(&amp;A)…</span><span></span></div>
+      </div>
+    </div>
+  </div>
+  <canvas id="screen" width="560" height="812"></canvas>
+</div>
+
+<!-- 自定义雷区 -->
+<div class="modal" id="m-custom"><div class="dlg">
+  <h3>自定义雷区<b data-close>✕</b></h3>
+  <div class="body">
+    <div class="row"><label>高度(H)</label><input type="number" id="c-h" value="16" min="9" max="30"><span class="hint">9 – 30 行</span></div>
+    <div class="row"><label>宽度(W)</label><input type="number" id="c-w" value="16" min="9" max="40"><span class="hint">9 – 40 列</span></div>
+    <div class="row"><label>正实雷：</label><input type="number" id="c-r0" value="10" min="0"></div>
+    <div class="row"><label>负实雷：</label><input type="number" id="c-r1" value="10" min="0"></div>
+    <div class="row"><label>正虚雷：</label><input type="number" id="c-r2" value="10" min="0"></div>
+    <div class="row"><label>负虚雷：</label><input type="number" id="c-r3" value="10" min="0"></div>
+    <div class="row"><button id="c-split">按合计均分</button></div>
+    <div id="err"></div>
+  </div>
+  <div class="foot"><button id="c-ok">确定</button><button data-close>取消</button></div>
+</div></div>
+
+<!-- 玩法与操作 -->
+<div class="modal" id="m-howto"><div class="dlg">
+  <h3>玩法与操作<b data-close>✕</b></h3>
+  <div class="body"><pre class="help" id="howto-text"></pre></div>
+  <div class="foot"><button data-close>确定</button></div>
+</div></div>
+
+<!-- 关于 -->
+<div class="modal" id="m-about"><div class="dlg">
+  <h3>关于复扫雷<b data-close>✕</b></h3>
+  <div class="body"><pre class="help" id="about-text"></pre></div>
+  <div class="foot"><button data-close>确定</button></div>
+</div></div>
+
+<!-- 最高分纪录 -->
+<div class="modal" id="m-records"><div class="dlg">
+  <h3>最高分纪录<b data-close>✕</b></h3>
+  <div class="body"><div class="kv" id="records-body"></div><div id="err2" style="color:#404040;margin-top:8px"></div></div>
+  <div class="foot"><button id="rec-clear">清除纪录</button><button data-close>确定</button></div>
+</div></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   复扫雷 Complexweeper — 单文件网页复刻
+   玩法、布雷算法、判据、连锁、计时计分与渲染规则，全部按对原件
+   `复扫雷 1.0.11.exe`（Zig / x86_64-windows-gnu）的逆向结果重写，
+   参见 re/ALGORITHMS.md（§2 布雷、§5 判据、§6 连锁、§17 渲染层）。
+   另经原作开源仓库 Yueqing-Chen/complexweeper-A-minesweeper-game（1.0.12，代码 GPL-3.0）
+   逐函数对照校验：图集矩形表 61/61、D→贴图表 65/65 与官方 `素材/图集.json` 完全一致，
+   算法、版式公式、LED/人脸规则、鼠标语义与 `正式版/src/{game,main}.zig` 一致；
+   唯一采纳的上游修复是 1.0.12 在 `cascadeOpen` 压栈时查重（1.0.11 大盘会漏格）。
+   本文件不依赖任何外部库：内置图集以 base64 内嵌，全部界面文字为原作文案。
+   ==========================================================================*/
+
+/* ─────────────────────────── 1. 内置资源（来自原件的 .rdata） ───────────── */
+/* 原件 `.rdata 0x11483` 起的图集，256×87，61 张贴图打在里面（同 §17） */
+const ATLAS_B64 =     "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";
+
+/* 贴图矩形表 `.rdata 0x2b380`：[x, y, w, h] × 61（下标即贴图 id） */
+const RECT = [
+  [0,0,32,32],[32,0,24,24],[56,0,24,24],[80,0,24,24],[104,0,24,24],[128,0,24,24],
+  [152,0,13,23],[165,0,13,23],[178,0,13,23],[191,0,13,23],[204,0,13,23],[217,0,13,23],
+  [230,0,13,23],[243,0,13,23],[0,32,13,23],[13,32,13,23],[26,32,13,23],[39,32,13,23],
+  [52,32,13,23],[65,32,16,16],[81,32,16,16],[97,32,16,16],[113,32,16,16],[129,32,16,16],
+  [145,32,16,16],[161,32,16,16],[177,32,16,16],[193,32,16,16],[209,32,16,16],[225,32,16,16],
+  [0,55,16,16],[16,55,16,16],[32,55,16,16],[48,55,16,16],[64,55,16,16],[80,55,16,16],
+  [96,55,16,16],[112,55,16,16],[128,55,16,16],[144,55,16,16],[160,55,16,16],[176,55,16,16],
+  [192,55,16,16],[208,55,16,16],[224,55,16,16],[240,55,16,16],[0,71,16,16],[16,71,16,16],
+  [32,71,16,16],[48,71,16,16],[64,71,16,16],[80,71,16,16],[96,71,16,16],[112,71,16,16],
+  [128,71,16,16],[144,71,16,16],[160,71,16,16],[176,71,16,16],[192,71,16,16],[208,71,16,16],
+  [224,71,16,16]
+];
+
+/* D 值 → 数字/根式字形贴图 id（`.rdata 0x2b258`，[65]u16，0xffff = 该 D 不可达）*/
+const D_TO_SPRITE = [
+  19,20,21,0xffff,22,23,0xffff,0xffff,24,25,26,0xffff,0xffff,
+  27,0xffff,0xffff,28,29,30,0xffff,31,0xffff,0xffff,0xffff,0xffff,32,
+  33,0xffff,0xffff,34,0xffff,0xffff,35,0xffff,36,0xffff,37,38,0xffff,
+  0xffff,39,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,40,41,0xffff,
+  0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,42
+];
+
+/* 贴图常量（语义名同 render.zig） */
+const SPR = {
+  appIcon:0, face1:1, facePress:2, faceDead:3, faceWin:4, faceSurprised:5,
+  led0:6, led9:15, ledBlank:16, ledMinus:17, ledPad:18, ledI:18,
+  numberBase:19, numberLast:42,
+  closed:43, openBlank:44,
+  flagCorrect:[45,49,53,57], flagWrong:[48,52,56,60],
+  mineRevealed:[0,46,50,54,58], boom:[0,47,51,55,59]
+};
+
+/* 四种雷的复数分量（`.rdata 0x5b790`：(1,0)(-1,0)(0,1)(0,-1)）*/
+const COMPONENTS = [null,{re:1,im:0},{re:-1,im:0},{re:0,im:1},{re:0,im:-1}];
+
+/* 难度预设（原件的位域取值：9/16/30 宽、9/16/16 高、10/40/99 雷） */
+const PRESETS = [
+  {id:0, label:"初级", width:9,  height:9,  mines:10},
+  {id:1, label:"中级", width:16, height:16, mines:40},
+  {id:2, label:"高级", width:30, height:16, mines:99}   /* 注意：高级是宽 30、高 16 */
+];
+
+const MAX_CELLS = 1200;   /* 原件的三个平面各 0x4b0 = 1200 字节，超出静默丢弃 */
+
+/* ─────────────────────────── 2. 随机数：原件自带 mulberry32 ─────────────── */
+/* `FUN_14000e196`：state += 0x6D2B79F5; t = (s^(s>>15))*(s|1); t = ((t^(t>>7))*(t|0x3D)+t)^t;
+   r = t^(t>>14); 返回 trunc(bound × r × 2⁻³²)（浮点路径，与 Zig 标准库无关）*/
+function mulberry32(state){ this.s = state >>> 0; }
+mulberry32.prototype.draw = function(bound){
+  this.s = (this.s + 0x6D2B79F5) >>> 0;
+  let t = Math.imul(this.s ^ (this.s >>> 15), this.s | 1) >>> 0;
+  t = ((Math.imul(t ^ (t >>> 7), t | 0x3D) + t) ^ t) >>> 0;   /* 注意：先加回 t，再与 t 异或 */
+  t = (t ^ (t >>> 14)) >>> 0;
+  return Math.trunc(t * Math.pow(2, -32) * bound);
+};
+
+/* ─────────────────────────── 3. 棋盘（game.zig 的逐行移植） ────────────── */
+class Board {
+  constructor(width, height, mineCount, seed){
+    this.width = width; this.height = height;
+    this.cells = width * height;
+    this.mineCount = mineCount;
+    this.requested = [0,0,0,0];        /* +0x9a0 请求配比（正实/负实/正虚/负虚）*/
+    this.difficulty = 0;               /* 0/1/2 = 初/中/高，-1 = 自定义 */
+    this.mine = new Uint8Array(MAX_CELLS);      /* +0x9aa  雷类型面 */
+    this.revealed = new Uint8Array(MAX_CELLS);  /* +0xe5a  翻开面 */
+    this.flag = new Uint8Array(MAX_CELLS);      /* +0x130a 旗阶段面 */
+    this.d = new Int16Array(MAX_CELLS);         /* +0x028  D 数组（-1 = 雷格）*/
+    this.mineTotal = [0,0,0,0,0];      /* +0x98a 每类雷总数，下标 1..4 */
+    this.flagsOf_ = [0,0,0,0,0];       /* +0x994 各旗阶段计数 */
+    this.outcome = "none";             /* +0x17bd 结局码 */
+    this.hitCell = -1;                 /* +0x010 踩中格 */
+    this.rng = 1; this.seedCopy = 0;
+    this.firstCell = 0; this.actions = 0; this.scratch = 0;
+    this.reset(seed);
+  }
+  /* `FUN_140005283`：重置（**不清**请求配比，自定义配比跨局保留）*/
+  reset(seed){
+    const n = this.cells;
+    for (let i = 0; i < MAX_CELLS; i++){
+      if (i < n){ this.mine[i] = 0; this.revealed[i] = 0; this.flag[i] = 0; this.d[i] = -1; }
+    }
+    this.started = 0; this.overGate = 0; this.winFlag = 0;
+    this.outcome = "none"; this.hitCell = -1;
+    this.elapsedMs = 0;
+    for (let i = 0; i < 5; i++){ this.flagsOf_[i] = 0; this.mineTotal[i] = 0; }
+    const s = (seed >>> 0) + ((seed >>> 0) === 0 ? 1 : 0);   /* 种子 0 归一化为 1 */
+    this.rng = s; this.seedCopy = s;
+    this.firstCell = 0; this.actions = 0; this.scratch = 0;
+  }
+  /* `FUN_14000bf8d`：8 邻格，dy 外、dx 内 ⇒ (-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1) */
+  neighbours(cell){
+    const w = this.width, h = this.height;
+    const cx = cell % w, cy = (cell / w) | 0, out = [];
+    for (let dy = -1; dy <= 1; dy++){
+      for (let dx = -1; dx <= 1; dx++){
+        if (dx === 0 && dy === 0) continue;
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        out.push(cell + dx + dy * w);
+      }
+    }
+    return out;
+  }
+  mineNeighbourCount(cell){
+    let c = 0;
+    for (const j of this.neighbours(cell)) if (this.mine[j] !== 0) c++;
+    return c;
+  }
+  /* `FUN_14000bf64`：mine == 0 且邻域无雷 = 空白格 */
+  isBlank(cell){ return this.mine[cell] === 0 && this.mineNeighbourCount(cell) === 0; }
+  /* 显示值 = D 的最简根式（原件不运行时开方，只查 24 张预渲染位图）*/
+  display(cell){
+    let n = this.d[cell];
+    if (n <= 0) return {root:0, radicand:0};
+    let a = 1;
+    for (let f = 2; f * f <= n; f++){
+      while (n % (f * f) === 0){ n /= f * f; a *= f; }
+    }
+    return {root:a, radicand:n};
+  }
+  /* ── 布雷 `FUN_140007479` ── */
+  deal(firstCell){
+    const n = this.cells, rng = new mulberry32(this.rng + ((this.rng === 0) ? 1 : 0));
+    for (let i = 0; i < n; i++){ this.mine[i] = 0; this.d[i] = -1; this.revealed[i] = 0; }
+
+    /* 1. 首点 + 8 邻格共 9 格禁雷 */
+    const excluded = new Uint8Array(n);
+    excluded[firstCell] = 1;
+    for (const k of this.neighbours(firstCell)) excluded[k] = 1;
+
+    /* 2. 候选表（格号升序）+ 降序 Fisher–Yates */
+    const cand = [];
+    for (let i = 0; i < n; i++) if (excluded[i] === 0) cand.push(i);
+    const m = cand.length;
+    for (let k = m; k > 1; k--){
+      const j = rng.draw(k), t = cand[k - 1];
+      cand[k - 1] = cand[j]; cand[j] = t;
+    }
+
+    /* 3. 布雷：均匀分支（预设难度）或精确配比分支（自定义）*/
+    const sum = this.requested[0] + this.requested[1] + this.requested[2] + this.requested[3];
+    let placed = 0;
+    if (sum === 0){
+      placed = Math.min(this.mineCount, m);
+      for (let i = 0; i < placed; i++) this.mine[cand[i]] = rng.draw(4) + 1;
+    } else {
+      const typeid = [];
+      for (let ti = 0; ti < 4; ti++)
+        for (let c = 0; c < this.requested[ti] && typeid.length < MAX_CELLS; c++) typeid.push(ti + 1);
+      let total = Math.min(sum, m, typeid.length);
+      for (let q = total; q > 1; q--){
+        const j = rng.draw(q), t = typeid[q - 1];
+        typeid[q - 1] = typeid[j]; typeid[j] = t;
+      }
+      placed = total;
+      for (let i = 0; i < placed; i++) this.mine[cand[i]] = typeid[i];
+    }
+    this.mineCount = placed;
+    this.rng = rng.s;                    /* 状态继续往下走（原件同样）*/
+
+    /* 4. 每类雷总数 */
+    for (let i = 0; i < 5; i++) this.mineTotal[i] = 0;
+    for (let i = 0; i < n; i++) if (this.mine[i] !== 0) this.mineTotal[this.mine[i]]++;
+
+    /* 5. D 值 = (Σ实部)² + (Σ虚部)² */
+    for (let i = 0; i < n; i++){
+      if (this.mine[i] !== 0){ this.d[i] = -1; continue; }
+      let re = 0, im = 0;
+      for (const j of this.neighbours(i)){
+        const mt = this.mine[j];
+        if (mt !== 0){ re += COMPONENTS[mt].re; im += COMPONENTS[mt].im; }
+      }
+      this.d[i] = im * im + re * re;
+    }
+
+    /* 6. 首点必然连片展开 */
+    this.floodFill([firstCell]);
+    this.winFlag = 0; this.started = 1; this.firstCell = firstCell;
+    this.actions = 1; this.elapsedMs = 0; this.scratch = 0;
+  }
+  /* ── 洪水填充 `FUN_14000c731`：LIFO 栈；只有空白格才继续压栈。
+        1.0.12 的修复：压栈时记 `queued`，同格不再重复入栈（1.0.11 大盘会因
+        重复压栈把定长栈塞满而漏格；`queued` 只影响入栈次数，结果与被 1 覆盖一致）── */
+  floodFill(cells){
+    const stack = cells.slice();
+    const queued = new Uint8Array(this.cells);
+    for (const c of cells) queued[c] = 1;
+    while (stack.length){
+      const c = stack.pop();
+      if (this.revealed[c] !== 0 || this.mine[c] !== 0 || this.flag[c] !== 0) continue;
+      this.revealed[c] = 1;
+      if (!this.isBlank(c)) continue;
+      for (const j of this.neighbours(c))
+        if (queued[j] === 0 && this.revealed[j] === 0 && this.mine[j] === 0 && this.flag[j] === 0){
+          queued[j] = 1; stack.push(j);
+        }
+    }
+  }
+  /* ── 单格翻开 `FUN_140007796`（种子是**该格的邻居**，不是该格自己）── */
+  open(cell){
+    if (this.overGate !== 0) return;
+    if (this.revealed[cell] !== 0) return;
+    if (this.flag[cell] !== 0) return;
+    this.revealed[cell] = 1;
+    this.actions++;
+    if (this.mine[cell] !== 0){
+      this.overGate = 1; this.hitCell = cell; this.outcome = "boom";
+      return;
+    }
+    if (this.isBlank(cell)) this.floodFill(this.neighbours(cell));
+    this.checkWin();
+  }
+  /* ── 判胜 `FUN_14000c820` ── */
+  checkWin(){
+    for (let i = 0; i < this.cells; i++)
+      if (this.mine[i] === 0 && this.revealed[i] === 0) return;
+    this.overGate = 1; this.winFlag = 1; this.outcome = "win";
+  }
+  /* ── 判据 `FUN_14000c013` ── */
+  chordCriterion(cell){
+    const mineCnt = [0,0,0,0,0], flagCnt = [0,0,0,0,0];
+    for (const j of this.neighbours(cell)){
+      if (this.mine[j] !== 0) mineCnt[this.mine[j]]++;
+      if (this.flag[j] !== 0) flagCnt[this.flag[j]]++;
+    }
+    const realMines = mineCnt[1] + mineCnt[2], imagMines = mineCnt[3] + mineCnt[4];
+    const realFlags = flagCnt[1] + flagCnt[2], imagFlags = flagCnt[3] + flagCnt[4];
+    if (realFlags + imagFlags !== realMines + imagMines) return false;
+    return (imagFlags === realMines) || (imagFlags === imagMines);
+  }
+  /* ── 判据展开 `FUN_14000c0bc`（中键 / 左右键同按）── */
+  chord(cell){
+    if (this.overGate !== 0) return;
+    if (this.revealed[cell] === 0) return;
+    if (this.mine[cell] !== 0) return;
+    const targets = this.neighbours(cell).filter(j => this.revealed[j] === 0 && this.flag[j] === 0);
+    if (targets.length === 0) return;
+    if (!this.chordCriterion(cell)){ this.outcome = "criterion_failed"; return; }
+    for (const j of targets){
+      if (this.mine[j] !== 0){
+        this.revealed[j] = 1; this.overGate = 1; this.hitCell = j; this.outcome = "boom";
+        return;
+      }
+    }
+    this.floodFill(targets);
+    this.outcome = "expanded";
+    this.checkWin();
+  }
+  /* ── 插旗 `FUN_140007a0d` + `FUN_14000b59b`：1→2→3→4→0→1 ── */
+  setFlagStage(cell, stage){
+    if (stage < 5 && this.flag[cell] !== stage){
+      const old = this.flag[cell];
+      if (old !== 0) this.flagsOf_[old]--;
+      this.flag[cell] = stage;
+      if (stage !== 0) this.flagsOf_[stage]++;
+    }
+    return stage < 5;
+  }
+  cycleFlag(cell){
+    if (this.overGate !== 0) return;
+    if (this.revealed[cell] !== 0) return;
+    const f = this.flag[cell];
+    this.setFlagStage(cell, f === 0 ? 1 : (f === 1 ? 2 : (f === 2 ? 3 : (f === 3 ? 4 : 0))));
+    this.actions++;
+  }
+  /* ── 计雷器口径 `FUN_14000b776`：mine_total[t] − flags_by_stage[t]（u32 回绕）── */
+  unmarkedOf(t){ return ((this.mineTotal[t] - this.flagsOf_[t]) >>> 0) | 0; }
+  counterValue(t){ const v = this.unmarkedOf(t); return (t === 2 || t === 4) ? -v : v; }
+  revealedCount(){
+    let c = 0;
+    for (let i = 0; i < this.cells; i++) if (this.revealed[i] !== 0) c++;
+    return c;
+  }
+  /* ── 候选格 → 贴图 id（`FUN_14000c3f9`，见 ALGORITHMS §17.2）── */
+  spriteId(cell, view){
+    const mi = this.mine[cell];
+    const lost = ((this.winFlag ^ 1) & this.overGate) !== 0;
+    /* ① 左键按住（含按住拖动跟随）的未翻开格 → “按下去”的空白外观。
+       原件 cellSprite 分支① 只看 `press_cell == i and open[i]==0`：不看旗、不看悬停
+       （原件根本没有悬停预览，见 main.zig:507-530）*/
+    if (this.revealed[cell] === 0 && view && view.press === cell)
+      return SPR.openBlank;
+    /* ② 中键/左右同按的展开预览：锚点的未翻开无旗邻格也画成空白。
+       `chordable` 锚点须"已翻开且不是雷"（main.zig:507-530）*/
+    if (this.revealed[cell] === 0 && view && view.previewAnchor >= 0){
+      const anchor = view.previewAnchor;
+      if (anchor >= 0 && this.revealed[anchor] !== 0 && this.mine[anchor] === 0){
+        const nb = this.neighbours(anchor);
+        if (nb.includes(cell) && nb.some(j => this.revealed[j] === 0 && this.flag[j] === 0))
+          return SPR.openBlank;
+      }
+    }
+    if (this.revealed[cell] === 0){
+      const stage = this.flag[cell];
+      if (stage !== 0) return (lost && mi !== stage) ? SPR.flagWrong[stage - 1] : SPR.flagCorrect[stage - 1];
+      if (lost && mi !== 0) return SPR.mineRevealed[mi];
+      return SPR.closed;
+    }
+    if (mi !== 0) return (this.hitCell === cell) ? SPR.boom[mi] : SPR.mineRevealed[mi];
+    const d = this.d[cell];
+    if (d === 0 && this.mineNeighbourCount(cell) === 0) return SPR.openBlank;
+    if (d >= 0 && d < D_TO_SPRITE.length){
+      const id = D_TO_SPRITE[d];
+      if (id !== 0xffff) return id;
+    }
+    return SPR.openBlank;
+  }
+  /* ── 状态 dump（与原件 --dump 的格式串逐字节相同，自检用）── */
+  dumpText(){
+    const L = [];
+    L.push("棋盘 " + this.width + "×" + this.height + " · 雷 " + this.mineCount +
+           " · 已翻开 " + this.revealedCount() + " · 开局格 " + this.firstCell);
+    const four = a => a.slice(1,5).join(" ");
+    L.push("type_total  = " + four(this.mineTotal));
+    L.push("flags_of    = " + four(this.flagsOf_));
+    L.push("unmarked    = " + [1,2,3,4].map(t => this.unmarkedOf(t)).join(" "));
+    L.push("counterValue= " + [1,2,3,4].map(t => this.counterValue(t)).join(" "));
+    L.push("panelCells  = " + [1,2,3,4].map(t => counterCells(t, this.counterValue(t))).join(" ") +
+           "   timer=" + counterCells(1, this.started ? Math.min((this.elapsedMs / 1000) | 0, 9999) : null));
+    L.push("started=" + tf(this.started) + " over=" + tf(this.overGate) + " win=" + tf(this.winFlag) +
+           " elapsed_ms=" + this.elapsedMs);
+    return L.join("\n");
+  }
+  /* ── 原件自带的演示局面（main.zig 的 --demo*，用于回归验证）── */
+  preloadDemo(mode){
+    if (mode === 4){ this.reset(0x1352505); this.deal(78); this.elapsedMs = 42000; return; }
+    this.reset(0x1352505);
+    this.deal(136);
+    this.elapsedMs = 83000;
+    if (mode === 1){
+      let opened = 0;
+      for (let c = 0; c < this.cells && opened < 14; c++)
+        if (this.mine[c] === 0 && this.revealed[c] === 0){ this.open(c); opened++; }
+      let flagged = 0;
+      for (let c = 0; c < this.cells && flagged < 6; c++)
+        if (this.revealed[c] === 0){ this.setFlagStage(c, (flagged & 3) + 1); flagged++; }
+    } else if (mode === 3){
+      for (let c = 0; c < this.cells; c++) if (this.mine[c] === 0 && this.revealed[c] === 0) this.open(c);
+    } else if (mode === 2){
+      let flagged = 0;
+      for (let c = 0; c < this.cells && flagged < 4; c++)
+        if (this.revealed[c] === 0 && this.mine[c] === 0){ this.setFlagStage(c, flagged + 1); flagged++; }
+      for (let k = 0; k < this.cells; k++) if (this.mine[k] === 2){ this.open(k); break; }
+    }
+  }
+}
+function tf(b){ return b ? "true" : "false"; }
+
+/* ─────────────────────────── 4. 版式与 LED（`FUN_140005afa` / §17.1） ──── */
+function layoutOf(w, h, z){
+  const t = 16 * z, hw = Math.max(174 * z, w * t + 6 * z);
+  const boardX = 12 * z + Math.floor((hw - (w * t + 6 * z)) / 2), boardY = 138 * z;
+  return {
+    z:z, cell:t, headerW:hw, headerH:120 * z, headerX:9 * z, headerY:9 * z,
+    clientW:18 * z + hw, clientH:150 * z + h * t,
+    boardX:boardX, boardY:boardY,
+    boardW:w * t, boardH:h * t,
+    headerFrame:[3 * z, 3 * z, 18 * z + hw - 6 * z, 126 * z],
+    headerInner:[9 * z, 9 * z, hw, 120 * z],
+    /* 棋盘凹槽：上游 main.zig:429 `bx = board_x − box`（必须跟着居中后的 boardX 走，
+       否则棋盘窄于 174z 时凹槽不居中——初级 9×9 就是这个 bug） */
+    boardFrame:[boardX - 3 * z, boardY - 3 * z, w * t + 6 * z, h * t + 6 * z],
+    counterX:13 * z, counterY:t0 => 14 * z + (t0 - 1) * 28 * z, counterH:26 * z,
+    timer:[hw + 9 * z - 58 * z, (120 * z - 26 * z) / 2 + 9 * z, 54 * z, 26 * z]
+  };
+}
+/* 人脸按钮 x/y（`FUN_14000c35d` / `FUN_14000c3dd`）*/
+function facePos(L, counterW){
+  let x = Math.floor(L.headerW / 2) - 12 * L.z + 9 * L.z;
+  if (x < counterW + 9 * L.z + 10 * L.z) x = counterW + 9 * L.z + 10 * L.z;
+  if (9 * L.z + L.headerW - 64 * L.z < x + 24 * L.z) x = 9 * L.z + L.headerW - 64 * L.z - 24 * L.z;
+  if (x < 9 * L.z) x = 9 * L.z;
+  return [x - 2, (120 * L.z - 24 * L.z) / 2 + 9 * L.z - 2];
+}
+/* 计雷器数码格数（原件 `valueDigits` / `panelCells`，main.zig:375-410）：
+   base 位数字；数值超出 base 位则多占一格；为负时"负号占一格"，数值部分只有 base−1 位。
+   实轴（类型 1/2）base=4；虚轴（3/4）base=3 且额外 +1 格显示 i 单位。*/
+function valueDigits(base, v){
+  if (v === null || v === undefined) return base;
+  if (v >= 0) return (v <= Math.pow(10, base) - 1) ? base : base + 1;
+  return (v >= -(Math.pow(10, base - 1) - 1)) ? base : base + 1;
+}
+function counterCells(t, value){
+  const imag = (t === 3 || t === 4);
+  return valueDigits(imag ? 3 : 4, value) + (imag ? 1 : 0);
+}
+function blankGlyphs(n){ const a = []; for (let i = 0; i < n; i++) a.push(SPR.ledBlank); return a; }
+/* LED 数字在 26z 高面板里竖直居中的偏移：原件 `y + @divTrunc(26z − 23z, 2)`（main.zig:410/423），
+   即 trunc(3z/2) —— z=1→1、z=2→3、z=3→4（注意不是 z，也不是 1.5z 取整）*/
+function ledTop(z){ return Math.trunc(3 * z / 2); }
+/* 数码贴图：'0'..'8' → led_0..led_8，其余（含 '9'）→ led_9（原件 `digitSprite`）*/
+function ledSpriteForChar(ch){ return (ch >= "0" && ch <= "8") ? SPR.led0 + (+ch) : SPR.led9; }
+/* 数码串（原件 `drawLed`）：null → 全暗格；负 → 负号 + (base−1) 位；正 → base 位补零；
+   虚轴末尾永远是 i 单位格（未开局时为暗格）*/
+function counterGlyphs(t, value){
+  const imag = (t === 3 || t === 4);
+  const blank = (value === null || value === undefined);
+  const digits = valueDigits(imag ? 3 : 4, value);
+  const out = [];
+  if (blank){
+    for (let i = 0; i < digits; i++) out.push(SPR.ledBlank);
+  } else if (value < 0){
+    out.push(SPR.ledMinus);
+    const m = Math.min(-value, Math.pow(10, digits - 1) - 1);
+    for (const ch of String(m).padStart(digits - 1, "0")) out.push(ledSpriteForChar(ch));
+  } else {
+    const m = Math.min(value, Math.pow(10, digits) - 1);
+    for (const ch of String(m).padStart(digits, "0")) out.push(ledSpriteForChar(ch));
+  }
+  if (imag) out.push(blank ? SPR.ledBlank : SPR.ledI);
+  return out;
+}
+
+/* ─────────────────────────── 5. 界面与绘制 ───────────────────────────── */
+/* 鼠标/人脸状态与原件 `WndProc` 一一对应（main.zig:1084-1240）：
+   lDown/rDown/mDown = 三个键是否按着；faceArmed = 左键按在人脸上；faceDown = 人脸要显示"按下去"
+   pressCell = 左键按住的格（按住时拖动会跟随）；chordCell = 中键/左右同按的展开预览锚点
+   faceFlashUntil = 刚做过动作后 200ms 内人脸显示"扫雷"表情（原件 FACE_FLASH_MS） */
+const UI = {
+  board:null, zoom:1, view:{press:-1, previewAnchor:-1},
+  lDown:false, rDown:false, mDown:false, faceArmed:false, faceDown:false,
+  pressCell:-1, chordCell:-1, faceFlashUntil:0,
+  atlas:null, img:null, timerId:0, started:0, frozen:false
+};
+
+function newGame(preset){
+  if (preset){
+    UI.board = new Board(preset.width, preset.height, preset.mines, (Date.now() & 0xffffffff));
+    UI.board.difficulty = preset.id;
+    UI.board.requested = [0,0,0,0];           /* 切难度会清配比（原件同样）*/
+  } else {
+    const b = UI.board;
+    b.reset((Date.now() & 0xffffffff));       /* 保留尺寸与配比 */
+  }
+  UI.timerId = 0;
+  UI.view = {press:-1, previewAnchor:-1};
+  render();
+}
+function setCustom(h, w, counts){
+  const b = new Board(w, h, counts[0]+counts[1]+counts[2]+counts[3], (Date.now() & 0xffffffff));
+  b.requested = counts.slice();
+  b.difficulty = -1;
+  UI.board = b;
+  UI.timerId = 0;
+  render();
+}
+
+/* GDI 风格 3D 边框（原件由 DrawEdge/自绘完成，颜色取值同真机截图实测：#DFDFDF / #808080）*/
+function edge(ctx, x, y, w, h, raised, z){
+  const px = Math.max(1, z);
+  const [tl, br] = raised ? ["#dfdfdf", "#808080"] : ["#808080", "#dfdfdf"];
+  ctx.fillStyle = tl;
+  ctx.fillRect(x, y, w - px, px); ctx.fillRect(x, y, px, h - px);
+  ctx.fillStyle = br;
+  ctx.fillRect(x + w - px, y, px, h); ctx.fillRect(x, y + h - px, w, px);
+}
+/* 把 256×87 图集按像素复制放大到 z 倍，再 1:1 贴图 —— 与 GDI StretchBlt(COLORONCOLOR)
+   的最近邻放大逐像素一致，避免各浏览器在 drawImage 缩放时采样规则不同（z≥2 时的偏差）。*/
+const ATLAS_W = 256, ATLAS_H = 87;
+function imgReady(img){
+  return !!img && img.complete === true && img.naturalWidth > 0;
+}
+function scaledAtlas(z){
+  if (!imgReady(UI.img)) return null;                 /* 图集未解码完成：不建缓存 */
+  if (UI.atlasZ && UI.atlasZ.z === z) return UI.atlasZ.canvas;
+  try{
+    const src = document.createElement("canvas");
+    src.width = ATLAS_W; src.height = ATLAS_H;
+    const sctx = src.getContext("2d");
+    sctx.drawImage(UI.img, 0, 0);
+    const sd = sctx.getImageData(0, 0, ATLAS_W, ATLAS_H).data;
+    const dst = document.createElement("canvas");
+    dst.width = ATLAS_W * z; dst.height = ATLAS_H * z;
+    const dctx = dst.getContext("2d");
+    const out = dctx.createImageData(ATLAS_W * z, ATLAS_H * z);
+    for (let y = 0; y < ATLAS_H; y++) for (let x = 0; x < ATLAS_W; x++){
+      const o = (y * ATLAS_W + x) * 4, r = sd[o], g = sd[o + 1], b = sd[o + 2], a = sd[o + 3];
+      for (let yy = 0; yy < z; yy++) for (let xx = 0; xx < z; xx++){
+        const p = ((((y * z + yy) * ATLAS_W * z) + (x * z + xx)) * 4);
+        out.data[p] = r; out.data[p + 1] = g; out.data[p + 2] = b; out.data[p + 3] = a;
+      }
+    }
+    dctx.putImageData(out, 0, 0);
+    let opaque = 0;
+    for (let i = 3; i < out.data.length; i += 4) if (out.data[i] !== 0) opaque++;
+    UI.atlasZ = { z: z, canvas: dst };
+    return dst;
+  }catch(e){ UI.atlasZ = null; return null; }
+}
+function atlasSrc(z){
+  return (UI.atlasZ && UI.atlasZ.z === z) ? UI.atlasZ.canvas : UI.img;
+}
+function tile(ctx, id, x, y, size){
+  const r = RECT[id], z = UI.zoom, s = atlasSrc(z);
+  ctx.drawImage(s, r[0] * z, r[1] * z, r[2] * z, r[3] * z, x, y, size, size);
+}
+function tileWH(ctx, id, x, y, w, h){
+  const r = RECT[id], z = UI.zoom, s = atlasSrc(z);
+  ctx.drawImage(s, r[0] * z, r[1] * z, r[2] * z, r[3] * z, x, y, w, h);
+}
+
+function render(){
+  const b = UI.board; if (!b || !imgReady(UI.img)) return;
+  const z = UI.zoom, L = layoutOf(b.width, b.height, z);
+  const cv = document.getElementById("screen");
+  cv.width = L.clientW; cv.height = L.clientH;
+  /* 窗口宽度跟随客户区（原件如此：标题栏文字被裁切，而不是把窗口撑得比棋盘宽） */
+  const winEl = document.getElementById("win");
+  if (winEl && winEl.style) winEl.style.width = L.clientW + "px";
+  const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  scaledAtlas(z);   /* 预放大图集（像素复制），保证 z≥2 与原件 GDI 一致 */
+  ctx.fillStyle = "#c0c0c0"; ctx.fillRect(0, 0, L.clientW, L.clientH);
+  /* 客户区外框：3px 凸起 */
+  edge(ctx, 0, 0, L.clientW, L.clientH, true, 3 * z);
+  /* 头栏内凹框（真机截图中头栏外框不可见，只画内凹 2px） */
+  edge(ctx, L.headerInner[0], L.headerInner[1], L.headerInner[2], L.headerInner[3], false, 2 * z);
+  /* 棋盘区外框：内凹 3px */
+  edge(ctx, L.boardFrame[0], L.boardFrame[1], L.boardFrame[2], L.boardFrame[3], false, 3 * z);
+
+  /* ── 计雷器 4 行（未开局 = counterShown 为 null → 四行全暗格，不显示数字）── */
+  const live = b.started !== 0;
+  const shown = t => live ? b.counterValue(t) : null;      /* 原件 counterShown = started ? 值 : null */
+  let counterW = 0;
+  for (let t = 1; t <= 4; t++) counterW = Math.max(counterW, counterCells(t, shown(t)) * 13 * z + 20 * z);
+  for (let t = 1; t <= 4; t++){
+    const cells = counterCells(t, shown(t));
+    const x = L.counterX, y = L.counterY(t), w = cells * 13 * z + 20 * z, h = L.counterH;
+    edge(ctx, x, y, w, h, false, z);
+    tile(ctx, SPR.flagCorrect[t - 1], x + 2 * z, y + 5 * z, 16 * z);   /* 行首图标 = 同型旗 */
+    const g = counterGlyphs(t, shown(t));                              /* 虚轴末格自带 i 单位贴图 */
+    for (let i = 0; i < g.length; i++)
+      tileWH(ctx, g[i], x + 19 * z + i * 13 * z, y + ledTop(z), 13 * z, 23 * z);   /* LED 在 26z 面板里竖直居中 */
+  }
+  /* ── 人脸按钮（真机：整块按钮就是 24×24 贴图，自带 2px 边框，不另画边）。
+       与原件 `faceSprite()` 同序：按住人脸 > 结束(胜/负) > 按着棋盘 > 动作后 200ms > 平静 ── */
+  const fp = facePos(L, counterW);
+  let face = SPR.face1;
+  if (UI.faceDown) face = SPR.facePress;
+  else if (b.overGate) face = b.winFlag ? SPR.faceWin : SPR.faceDead;
+  else if (UI.rDown || UI.mDown || (UI.lDown && !UI.faceDown)) face = SPR.faceSurprised;
+  else if (Date.now() < UI.faceFlashUntil) face = SPR.faceSurprised;
+  tile(ctx, face, fp[0], fp[1], 24 * z);
+  /* ── 计时器 ── */
+  const tm = L.timer;
+  edge(ctx, tm[0], tm[1], tm[2], tm[3], false, z);
+  const g = b.started ? counterGlyphs(1, Math.min((b.elapsedMs / 1000) | 0, 9999)) : blankGlyphs(4);
+  for (let i = 0; i < g.length; i++) tileWH(ctx, g[i], tm[0] + z + i * 13 * z, tm[1] + ledTop(z), 13 * z, 23 * z);
+
+  /* ── 棋盘逐格 ── */
+  const vs = UI.view;
+  vs.press = UI.pressCell;                     /* 左键按住的格（“按住中”外观）*/
+  vs.previewAnchor = UI.chordCell;             /* 中键/左右同按的展开预览锚点 */
+  for (let i = 0; i < b.cells; i++){
+    const cx = L.boardX + (i % b.width) * L.cell;
+    const cy = L.boardY + Math.floor(i / b.width) * L.cell;
+    tile(ctx, b.spriteId(i, vs), cx, cy, L.cell);
+  }
+  UI.faceBtn = {x:fp[0], y:fp[1], size:24 * z};
+}
+
+/* 坐标 → 格号 / 人脸命中（`FUN_140007370`）*/
+function cellAt(ev){
+  const b = UI.board, L = layoutOf(b.width, b.height, UI.zoom);
+  const cv = document.getElementById("screen");
+  const rect = cv.getBoundingClientRect();
+  const sx = cv.width / rect.width, sy = cv.height / rect.height;
+  const x = (ev.clientX - rect.left) * sx, y = (ev.clientY - rect.top) * sy;
+  const fb = UI.faceBtn;
+  if (fb && x >= fb.x && y >= fb.y && x < fb.x + fb.size && y < fb.y + fb.size) return "face";
+  const col = Math.floor((x - L.boardX) / L.cell), row = Math.floor((y - L.boardY) / L.cell);
+  if (col < 0 || row < 0 || col >= b.width || row >= b.height) return -1;
+  return row * b.width + col;
+}
+function inFace(ev){ return cellAt(ev) === "face"; }
+
+function flashFace(){ UI.faceFlashUntil = Date.now() + 200; }      /* 原件 FACE_FLASH_MS = 200 */
+function clickCell(cell, action){        /* action: "open" | "flag" | "chord" */
+  const b = UI.board;
+  flashFace();                           /* 原件每次动作都让人脸"扫"一下 */
+  if (action === "flag"){ b.cycleFlag(cell); render(); return; }   /* 插旗不受开局状态限制 */
+  if (!b.started){                       /* 未发牌：左键这一下就是开局首点 */
+    if (action !== "open") return;
+    b.deal(cell);
+    startClock();
+    render();
+    return;
+  }
+  if (action === "chord") b.chord(cell);
+  else b.open(cell);
+  checkEnd();
+  render();
+}
+function startClock(){
+  if (UI.frozen) return;
+  if (UI.timerId) return;
+  UI.timerId = setInterval(() => {
+    const b = UI.board;
+    if (!b || !b.started || b.overGate){ return; }
+    b.elapsedMs = Date.now() - UI.started;
+    render();
+  }, 200);
+  UI.started = Date.now() - (UI.board.elapsedMs || 0);
+}
+function checkEnd(){
+  const b = UI.board;
+  if (!b.overGate) return;
+  clearInterval(UI.timerId); UI.timerId = 0;
+  if (b.winFlag) recordTime(b);
+}
+
+/* ── 最高分纪录（原件写注册表 HKCU\\Software\\Complexweeper，这里用 localStorage）*/
+const REC_KEY = "complexweeper.records";
+function loadRecords(){
+  try { return JSON.parse(localStorage.getItem(REC_KEY)) || {}; } catch(e){ return {}; }
+}
+function recordTime(b){
+  if (b.difficulty < 0 || b.difficulty > 2) return;
+  const secs = Math.floor(b.elapsedMs / 1000) + (Math.floor(b.elapsedMs / 1000) === 0 ? 1 : 0);
+  const rec = loadRecords(), key = ["Beginner","Intermediate","Expert"][b.difficulty];
+  const old = rec[key] || 0;
+  const better = (old === 0 || secs < old);
+  if (better){ rec[key] = secs; try { localStorage.setItem(REC_KEY, JSON.stringify(rec)); } catch(e){} }
+  showRecords(better ? secs : null, old);
+}
+function showRecords(justSet, oldBest){
+  const rec = loadRecords(), body = document.getElementById("records-body");
+  const rows = [["初级 9×9 · 10 雷","Beginner"],["中级 16×16 · 40 雷","Intermediate"],["高级 30×16 · 99 雷","Expert"]];
+  body.innerHTML = rows.map(([label,key]) =>
+    "<div>" + label + "</div><div>" + (rec[key] ? rec[key] + " 秒" : "（暂无纪录）") + "</div>").join("");
+  document.getElementById("err2").textContent = justSet
+    ? "新纪录：" + justSet + " 秒" + (oldBest ? "（原纪录 " + oldBest + " 秒）" : "")
+    : "";
+  show("m-records");
+}
+
+/* ── 对话框 ── */
+function show(id){ document.getElementById(id).classList.add("show"); }
+function hide(id){ document.getElementById(id).classList.remove("show"); }
+function hideAll(){ for (const m of document.querySelectorAll(".modal")) m.classList.remove("show"); }
+
+function bootUI(){
+  /* 图集解码（base64 PNG → Image）*/
+  UI.img = new Image();
+  UI.img.onload = () => { UI.atlasZ = null; render(); };   /* 解码完成后作废预放大缓存 */
+  /* 标题栏小图标：从图集裁出 32×32 的 id 0（监听器必须先挂，再赋 src） */
+  UI.img.addEventListener("load", () => {
+    const c = document.createElement("canvas"); c.width = 32; c.height = 32;
+    const g = c.getContext("2d");
+    g.drawImage(UI.img, RECT[0][0], RECT[0][1], RECT[0][2], RECT[0][3], 0, 0, 32, 32);
+    document.getElementById("appico").src = c.toDataURL("image/png");
+  });
+  UI.img.src = "data:image/png;base64," + ATLAS_B64;
+
+  /* 菜单 */
+  for (const m of document.querySelectorAll("#menubar .m")){
+    m.addEventListener("mousedown", ev => {
+      if (ev.target.closest && ev.target.closest(".dropdown")) return;   /* 点菜单项：交给 click 处理，不收起菜单 */
+      ev.preventDefault();
+      const open = m.classList.contains("open");
+      for (const o of document.querySelectorAll("#menubar .m")) o.classList.remove("open");
+      if (!open) m.classList.add("open");
+    });
+  }
+  document.addEventListener("mousedown", ev => {
+    if (!ev.target.closest || !ev.target.closest("#menubar"))
+      for (const o of document.querySelectorAll("#menubar .m")) o.classList.remove("open");
+  });
+  document.addEventListener("mousedown", ev => {
+    const it = ev.target.closest && ev.target.closest(".it");
+    if (it){ ev.preventDefault(); ev.stopPropagation(); }
+  }, true);
+  document.addEventListener("click", ev => {
+    const it = ev.target.closest && ev.target.closest(".it"); if (!it) return;
+    ev.preventDefault(); ev.stopPropagation();
+    for (const o of document.querySelectorAll("#menubar .m")) o.classList.remove("open");
+    menuAction(it.dataset.act);
+  });
+  for (const el of document.querySelectorAll("[data-close]"))
+    el.addEventListener("click", () => hideAll());
+
+  /* 鼠标：左键翻开 / 右键插旗 / 中键（或左右同按）判据展开。
+     状态机按原件 `WndProc` 重写（main.zig:1084-1240）：
+       · 左键按下 → press_cell（未翻开的格才记，旗格也记），按住拖动会跟随，**松手时才动作**
+       · 左键松手：按在人脸上 → 重开；有 chord_cell 且松手格 == 它 → 判据展开；
+         否则松手格 == press_cell 且没旗 → 未开局则开局、已开局则翻开
+       · 右键按下 → 立刻插旗（不受开局限制）；左右同按/中键 → chord_cell 预览，松手在同一格才展开
+       · 原件用 SetCapture：松手落在窗外也算数，所以 move/up 挂在 window 上 */
+  const cv = document.getElementById("screen");
+  const clickable = c => {                      /* 原件 `c>=0 and !game.over and open[c]==0` */
+    const b = UI.board;
+    return typeof c === "number" && c >= 0 && b.overGate === 0 && b.revealed[c] === 0;
+  };
+  cv.addEventListener("contextmenu", ev => ev.preventDefault());
+  cv.addEventListener("mousedown", ev => {
+    const b = UI.board, c = cellAt(ev);
+    if (ev.button === 1) ev.preventDefault();                       /* 中键不触发滚动 */
+    if (ev.button === 0){
+      UI.lDown = true; UI.faceArmed = (c === "face"); UI.faceDown = UI.faceArmed;
+      if (UI.rDown){ UI.chordCell = (typeof c === "number" && c >= 0) ? c : -1; UI.pressCell = -1; }
+      else if (!UI.faceArmed) UI.pressCell = clickable(c) ? c : -1;
+    } else if (ev.button === 2){
+      UI.rDown = true;
+      if (UI.lDown){ UI.chordCell = (typeof c === "number" && c >= 0) ? c : -1; UI.pressCell = -1; }
+      else if (clickable(c)){ b.cycleFlag(c); flashFace(); }
+    } else if (ev.button === 1){
+      UI.mDown = true; UI.chordCell = (typeof c === "number" && c >= 0) ? c : -1; UI.pressCell = -1;
+    }
+    render();
+  });
+  window.addEventListener("mousemove", ev => {
+    if (!UI.lDown && !UI.rDown && !UI.mDown) return;
+    const c = cellAt(ev);
+    if (UI.chordCell !== -1 || UI.mDown || (UI.lDown && UI.rDown))
+      UI.chordCell = (typeof c === "number" && c >= 0) ? c : -1;    /* 拖动时预览跟着走 */
+    else if (UI.lDown && !UI.faceArmed)
+      UI.pressCell = clickable(c) ? c : -1;
+    render();
+  });
+  window.addEventListener("mouseup", ev => {
+    const b = UI.board, c = cellAt(ev);
+    if (ev.button === 0){
+      /* 先取出再清状态（原件注释：ReleaseCapture 会同步清掉状态，踩过坑）*/
+      const held = UI.pressCell, chord = UI.chordCell, wasFace = UI.faceArmed;
+      UI.lDown = false; UI.pressCell = -1; UI.chordCell = -1; UI.faceArmed = false; UI.faceDown = false;
+      if (wasFace && c === "face") newGame(null);                   /* 人脸按钮 = 重开 */
+      else if (chord !== -1){ if (c === chord) clickCell(chord, "chord"); else render(); }
+      else if (held >= 0 && c === held && b.overGate === 0 && b.flag[held] === 0) clickCell(held, "open");
+      else render();
+      return;
+    }
+    if (ev.button === 2){
+      const chord = UI.chordCell;
+      UI.rDown = false; UI.chordCell = -1;
+      if (chord !== -1 && c === chord) clickCell(chord, "chord"); else render();
+      return;
+    }
+    if (ev.button === 1){
+      const chord = UI.chordCell;
+      UI.mDown = false; UI.chordCell = -1;
+      if (chord !== -1 && c === chord) clickCell(chord, "chord"); else render();
+    }
+  });
+
+  /* F2 开局（原件只处理这一个按键）*/
+  document.addEventListener("keydown", ev => { if (ev.key === "F2"){ ev.preventDefault(); newGame(null); } });
+
+  /* 头栏计时（未开局不跑）+ 动作后人脸表情的 200ms 回收 */
+  setInterval(() => {
+    if (UI.board.started && !UI.board.overGate) startClock();
+    if (UI.faceFlashUntil && Date.now() >= UI.faceFlashUntil){ UI.faceFlashUntil = 0; render(); }
+  }, 200);
+
+  /* 自定义雷区 */
+  document.getElementById("c-split").addEventListener("click", () => {
+    const vals = [0,1,2,3].map(i => Math.max(0, parseInt(document.getElementById("c-r"+i).value, 10) || 0));
+    let total = vals.reduce((a,b) => a+b, 0);
+    if (total <= 0) total = 99;
+    if (total >= 999) total = 999;
+    const q = Math.floor(total / 4), r = total % 4;
+    for (let i = 0; i < 4; i++) document.getElementById("c-r"+i).value = q + (i < r ? 1 : 0);
+  });
+  document.getElementById("c-ok").addEventListener("click", () => {
+    const h = parseInt(document.getElementById("c-h").value, 10) || 0;
+    const w = parseInt(document.getElementById("c-w").value, 10) || 0;
+    const counts = [0,1,2,3].map(i => Math.max(0, parseInt(document.getElementById("c-r"+i).value, 10) || 0));
+    const total = counts.reduce((a,b) => a+b, 0);
+    const err = document.getElementById("err");
+    /* 校验（原件错误码 1..4）：高 9..30、宽 9..40、合计 ≥ 1、合计 ≤ W×H − 9（首点+8 邻格禁雷）*/
+    if (h < 9 || h > 30) { err.textContent = "高度要在 9 – 30 之间"; return; }
+    if (w < 9 || w > 40) { err.textContent = "宽度要在 9 – 40 之间"; return; }
+    if (total < 1) { err.textContent = "四种雷合计至少 1 颗"; return; }
+    if (total > w * h - 9) { err.textContent = "合计超过上限（最多 " + (w * h - 9) + " 颗）"; return; }
+    err.textContent = "";
+    hideAll();
+    setCustom(h, w, counts);
+  });
+  document.getElementById("rec-clear").addEventListener("click", () => {
+    try { localStorage.removeItem(REC_KEY); } catch(e){}
+    showRecords(null, 0);
+  });
+
+  /* 文案（原作文案，见 text_zh.zig / main.zig）*/
+  document.getElementById("howto-text").textContent =
+    /* 前半段 = 原作 1.0.12 `HELP_TEXT` 原文（一字未改，作者规矩：只写雷名旗名，不写 +1/−1 符号）*/
+    "雷区里有四种雷，分别是正实雷、负实雷、正虚雷、负虚雷。\n" +
+    "左键翻开格子。\n" +
+    "右键插旗，旗帜顺序为正实旗、负实旗、正虚旗、负虚旗。\n" +
+    "中键或左右键同时点击展开格子。\n" +
+    "F2开局。\n\n" +
+    "数字代表该格周围所有雷的加和之模长，均为整数或最简根式。\n\n" +
+    "当旗帜数量等于周围真实雷数，且实虚比例符合真实比例或其倒数，则可以展开。\n\n" +
+    "————\n" +
+    "（以下为网页版补充说明，原作帮助里没有这一段）\n" +
+    "四种雷按复数记：正实雷 = 1，负实雷 = −1，正虚雷 = i，负虚雷 = −i。\n" +
+    "数字格显示的是周围所有雷之和的模长（如 2√5 = √20），它只告诉你\"和是多少\"，\n" +
+    "不告诉你是哪几种雷；插旗时按实/虚、正/负四种旗去猜，凑对了才能中键展开。\n" +
+    "因此判据只比较\"旗子的实虚枚数\"与\"雷的实虚枚数\"：只比数量、不比位置，\n" +
+    "所以即使判据通过也可能踩雷——这是这个改版扫雷的玩法核心。\n" +
+    "计雷器四行分别是四种雷\"还没被标记的枚数\"，因此可以出现负数。\n" +
+    "计时器在第一次点开格子时开始走，通关/踩雷时停止。";
+  document.getElementById("about-text").textContent =
+    "复扫雷 Complexweeper（单文件网页复刻版）\n\n" +
+    "本程序是基于 青月晓 的《复扫雷 Complexweeper》复刻的网页版：\n" +
+    "玩法、布雷算法、判据、连锁展开、计时计分与界面版式，\n" +
+    "均按对原件 复扫雷 1.0.11.exe（Zig / x86_64-windows-gnu）的逆向分析结果重写，\n" +
+    "并与原作开源仓库 1.0.12 的源码逐函数对照校验（贴图矩形表与数字贴图表完全一致），\n" +
+    "贴图直接使用原件内置图集，界面文案沿用原作。\n\n" +
+    "原作信息：\n" +
+    "  原作作者 / 版权：青月晓（Copyright © 2026 青月晓）\n" +
+    "  原作开源仓库：github.com/Yueqing-Chen/complexweeper-A-minesweeper-game（代码 GPL-3.0）\n" +
+    "  原作基于 Microsoft® 扫雷（原版作者：Robert Donner、Curt Johnson）\n" +
+    "  图像素材来源：Microsoft（扫雷原始图像素材）；青月晓（新增图像素材）。\n" +
+    "  本网页版引擎由原作 GPL-3.0 源码改写而来，同样以 GPL-3.0 授权。\n\n" +
+    "本网页版为单文件 HTML，不依赖任何外部库，仅用于学习与技术交流；\n" +
+    "与 Microsoft 公司无隶属关系。";
+
+  /* 初始局面：默认中级（同原件启动时的默认难度）。
+     另有仅供自测/截图用的 URL 参数（正常使用无需关心）：
+       ?preset=beginner|intermediate|expert|custom &zoom=1|2|3 &demo=1..4 &bare=1 */
+  const qs = new URLSearchParams(location.search);
+  const zm = parseInt(qs.get("zoom") || "", 10);
+  if (zm >= 1 && zm <= 3) UI.zoom = zm;
+  const name = qs.get("preset") || "intermediate";
+  if (name === "custom") setCustom(12, 12, [0, 7, 0, 7]);        /* 自测用固定自定义雷区 */
+  else newGame(PRESETS[["beginner","intermediate","expert"].indexOf(name)] || PRESETS[1]);
+  const dm = parseInt(qs.get("demo") || "", 10);
+  if (dm >= 1 && dm <= 4){
+    UI.frozen = true;                                            /* 冻结计时器，保持与真机截图同状态 */
+    UI.board.preloadDemo(dm);
+    UI.started = Date.now() - UI.board.elapsedMs;
+    render();
+  }
+  if (qs.get("show")){                                           /* 自测用：直接打开某个对话框 */
+    const m = { howto:"m-howto", about:"m-about", custom:"m-custom", records:"m-records" }[qs.get("show")];
+    if (m === "m-records") showRecords(null, 0); else if (m) show(m);
+  }
+  if (qs.get("bare")){                                           /* 只留画布，便于与真机截图逐像素比对 */
+    document.getElementById("titlebar").style.display = "none";
+    document.getElementById("menubar").style.display = "none";
+    document.getElementById("win").style.cssText = "padding:0;margin:0;border:none;background:transparent;box-shadow:none";
+    document.body.style.cssText = "padding:0;margin:0;background:#000";
+  }
+}
+
+function menuAction(act){
+  if (act === "new") newGame(null);
+  else if (act === "beginner") newGame(PRESETS[0]);
+  else if (act === "intermediate") newGame(PRESETS[1]);
+  else if (act === "expert") newGame(PRESETS[2]);
+  else if (act === "custom"){ document.getElementById("err").textContent = ""; show("m-custom"); }
+  else if (act === "records") showRecords(null, 0);
+  else if (act === "z1"){ UI.zoom = 1; render(); }
+  else if (act === "z2"){ UI.zoom = 2; render(); }
+  else if (act === "z3"){ UI.zoom = 3; render(); }
+  else if (act === "howto") show("m-howto");
+  else if (act === "about") show("m-about");
+  else if (act === "exit") alert("网页版无法关闭标签页，请直接关闭本页。");
+}
+
+/* 脚本在浏览器里跑界面；在 Node 里只导出引擎，供回归自检使用 */
+if (typeof document !== "undefined") bootUI();
+if (typeof module !== "undefined" && module.exports)
+  module.exports = {Board, mulberry32, layoutOf, facePos, counterCells, counterGlyphs, SPR, D_TO_SPRITE, RECT, PRESETS};
+</script>
+</body>
+</html>
