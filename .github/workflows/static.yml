@@ -34,7 +34,8 @@ jobs:
       - name: Stage site
         run: |
           mkdir -p _site
-          cp complexweeper.html index.html _site/
+          cp complexweeper.html _site/complexweeper.html
+          cp complexweeper.html _site/index.html
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
