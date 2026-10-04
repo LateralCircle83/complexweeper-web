@@ -28,7 +28,9 @@
   .dropdown .it{padding:2px 20px 2px 10px;display:flex;justify-content:space-between;gap:18px;cursor:default;white-space:pre}
   .dropdown .it:hover{background:#000080;color:#fff}
   .dropdown .sep{height:1px;margin:2px 3px;background:#808080}
-  #screen{display:block;background:#c0c0c0}
+  #screen{display:block;background:#c0c0c0;
+          -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+          -webkit-tap-highlight-color:transparent}
   /* ── 对话框 */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:100}
   .modal.show{display:flex}
@@ -567,11 +569,16 @@ function counterGlyphs(t, value){
    lDown/rDown/mDown = 三个键是否按着；faceArmed = 左键按在人脸上；faceDown = 人脸要显示"按下去"
    pressCell = 左键按住的格（按住时拖动会跟随）；chordCell = 中键/左右同按的展开预览锚点
    faceFlashUntil = 刚做过动作后 200ms 内人脸显示"扫雷"表情（原件 FACE_FLASH_MS） */
+/* 触屏插旗的两条规则（提到顶层，便于自检调用）*/
+const tapStage  = f => (f % 4) + 1;          /* 有旗单击：正实→负实→正虚→负虚→正实（不经过 0）*/
+const holdStage = f => (f ? 0 : 1);          /* 长按：未插旗→正实旗；已有旗→取消旗 */
+
 const UI = {
   board:null, zoom:1, view:{press:-1, previewAnchor:-1},
   lDown:false, rDown:false, mDown:false, faceArmed:false, faceDown:false,
   pressCell:-1, chordCell:-1, faceFlashUntil:0,
-  atlas:null, img:null, timerId:0, started:0, frozen:false
+  atlas:null, img:null, timerId:0, started:0, frozen:false,
+  swallowMouse:0, swallowUntil:0                /* 触屏动作后吞掉浏览器补发的那一次鼠标按下 */
 };
 
 function newGame(preset){
@@ -837,13 +844,120 @@ function bootUI(){
          否则松手格 == press_cell 且没旗 → 未开局则开局、已开局则翻开
        · 右键按下 → 立刻插旗（不受开局限制）；左右同按/中键 → chord_cell 预览，松手在同一格才展开
        · 原件用 SetCapture：松手落在窗外也算数，所以 move/up 挂在 window 上 */
+  /* ── 触屏层 ──
+     · 长按 420ms：未插旗 → 正实旗（阶段 1）；已有旗 → 取消旗（阶段 0）
+     · 有旗的格子单击：换成下一面旗（1→2→3→4→1，**故意不经过 0**，免得手抖把旗弄没）
+     · 手指移动超过 10px → 放弃长按（滑动＝浏览器原生滚动平移）
+     · 无旗格子单击／人脸／已翻开：什么都不做，交给浏览器补发的 click 走原生路径 */
+  const TOUCH_LONG_MS = 420, TOUCH_SLOP = 10;
+  function bootTouch(cv){
+    if (!cv || !cv.addEventListener) return;
+    let pressCell = -1, timer = 0, x0 = 0, y0 = 0, longDone = false;
+    const isTouch = ev => !!ev.pointerType && ev.pointerType !== "mouse";
+    const closed = c => { const b = UI.board;
+      return typeof c === "number" && c >= 0 && b.overGate === 0 && b.revealed[c] === 0; };
+    const stop = () => { if (timer){ clearTimeout(timer); timer = 0; } pressCell = -1; };
+    const flag = (cell, stage) => {           /* 与右键插旗同路：记数、闪脸、震动、重画 */
+      const b = UI.board;
+      if (!closed(cell)) return;
+      b.setFlagStage(cell, stage);
+      b.actions++;
+      longDone = true;
+      armSwallow();                               /* 吞掉这次手势松开时补发的鼠标按下 */
+      flashFace();
+      if (navigator.vibrate){ try { navigator.vibrate(12); } catch (_) {} }
+      render();
+    };
+    cv.addEventListener("pointerdown", ev => {
+      if (!isTouch(ev)) return;
+      const c = cellAt(ev);
+      longDone = false;
+      UI.swallowMouse = 0;                        /* 新手势开始：上一手势的补发要么已到、要么不会来了 */
+      if (!closed(c)){ pressCell = -1; return; }          /* 人脸／已翻开／界外：不干预 */
+      pressCell = c; x0 = ev.clientX; y0 = ev.clientY;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = 0; flag(pressCell, holdStage(UI.board.flag[pressCell])); },
+                        TOUCH_LONG_MS);
+    }, {passive:true});
+    cv.addEventListener("pointermove", ev => {
+      if (!isTouch(ev) || pressCell < 0) return;
+      if (Math.abs(ev.clientX - x0) > TOUCH_SLOP || Math.abs(ev.clientY - y0) > TOUCH_SLOP){
+        if (timer){ clearTimeout(timer); timer = 0; }
+        pressCell = -1;                                   /* 滑动：还给浏览器原生滚动 */
+      }
+    }, {passive:true});
+    cv.addEventListener("pointerup", ev => {
+      if (!isTouch(ev)) return;
+      const c = cellAt(ev), was = pressCell;
+      const shortPress = was >= 0 && timer !== 0;          /* 长按已触发／已滑动 → 不算单击 */
+      const long = longDone;
+      stop(); longDone = false;
+      if (long || !shortPress || c !== was) return;
+      const b = UI.board;
+      if (!closed(c) || b.flag[c] === 0) return;           /* 无旗：交给原生 click 翻开 */
+      flag(c, tapStage(b.flag[c]));
+    }, {passive:true});
+    cv.addEventListener("pointercancel", () => { stop(); longDone = false; }, {passive:true});
+  }
+  /* 触屏自检（调试用，`?touchtest=1`）：用合成事件跑一遍长按/单击序列，
+     结果写进 document.title，摆出来的旗子留在画面上便于截图人工核对 */
+  function runTouchTest(mode){
+    const cv = document.getElementById("screen"), b = UI.board;
+    const L = layoutOf(b.width, b.height, UI.zoom), rect = cv.getBoundingClientRect();
+    const sc = cv.width / rect.width;
+    const cell = Math.min(100, b.cells - 1), c2 = (cell + 5) % b.cells;   /* c2 = 另一格，用来验"无旗单击照旧翻开" */
+    const at = c => ({clientX: rect.left + (L.boardX + (c % b.width) * L.cell + L.cell / 2) / sc,
+                      clientY: rect.top + (L.boardY + Math.floor(c / b.width) * L.cell + L.cell / 2) / sc});
+    const pe = (type, c) => cv.dispatchEvent(new PointerEvent(type,
+      Object.assign({pointerType:"touch", bubbles:true, isPrimary:true}, at(c))));
+    const compat = c => {                                  /* 模拟浏览器补发的一套鼠标事件 */
+      const o = Object.assign({button:0, bubbles:true}, at(c));
+      cv.dispatchEvent(new MouseEvent("mousedown", o));
+      window.dispatchEvent(new MouseEvent("mouseup", o));
+      cv.dispatchEvent(new MouseEvent("click", o));
+    };
+    const log = [];
+    if (mode === "flag"){                                  /* 只做一次长按，把旗留在画面上供截图 */
+      setTimeout(() => pe("pointerdown", cell), 0);
+      setTimeout(() => { pe("pointerup", cell); compat(cell);
+                         document.title = "TOUCHTEST hold:" + b.flag[cell]; }, 520);
+      return;
+    }
+    setTimeout(() => pe("pointerdown", cell), 0);
+    setTimeout(() => { pe("pointerup", cell); compat(cell); log.push("hold:" + b.flag[cell]); }, 520);
+    setTimeout(() => { pe("pointerdown", cell); pe("pointerup", cell); compat(cell);
+                       log.push("tap1:" + b.flag[cell]); }, 700);
+    setTimeout(() => { pe("pointerdown", cell); pe("pointerup", cell); compat(cell);
+                       log.push("tap2:" + b.flag[cell]); }, 900);
+    setTimeout(() => pe("pointerdown", cell), 1100);
+    setTimeout(() => { pe("pointerup", cell); compat(cell);
+                       log.push("hold2:" + b.flag[cell]);
+                       /* 无旗的格子：单击必须照旧翻开（原生路径）*/
+                       pe("pointerdown", c2); pe("pointerup", c2); compat(c2);
+                       log.push("tapopen:" + (b.revealed[c2] ? 1 : 0));
+                       document.title = "TOUCHTEST " + log.join(" ") + " opened:" + b.revealed[cell]; },
+               1700);
+  }
+
   const cv = document.getElementById("screen");
   const clickable = c => {                      /* 原件 `c>=0 and !game.over and open[c]==0` */
     const b = UI.board;
     return typeof c === "number" && c >= 0 && b.overGate === 0 && b.revealed[c] === 0;
   };
+  /* 触屏刚插过旗／刚切过旗时，浏览器还会补发一套 mousedown/mouseup/click，
+     必须吞掉，否则长按会顺手把格子翻开（触屏层见 bootTouch）。
+     这里**只吞"下一次鼠标按下"**、不设时间窗：每个触屏手势都自带一次补发，
+     所以计数器会被那次补发消耗掉，随后真正的点击不受影响；
+     700ms 的兜底只为"某些浏览器长按后根本不补发"时不至于吃掉后面的鼠标点击。*/
+  function armSwallow(){ UI.swallowMouse = 1; UI.swallowUntil = Date.now() + 700; }
+  const touchOwned = () => {
+    if (!UI.swallowMouse || Date.now() > UI.swallowUntil){ UI.swallowMouse = 0; return false; }
+    UI.swallowMouse = 0;
+    return true;
+  };
   cv.addEventListener("contextmenu", ev => ev.preventDefault());
   cv.addEventListener("mousedown", ev => {
+    if (touchOwned()) return;
     const b = UI.board, c = cellAt(ev);
     if (ev.button === 1) ev.preventDefault();                       /* 中键不触发滚动 */
     if (ev.button === 0){
@@ -869,6 +983,7 @@ function bootUI(){
     render();
   });
   window.addEventListener("mouseup", ev => {
+    if (touchOwned()) return;
     const b = UI.board, c = cellAt(ev);
     if (ev.button === 0){
       /* 先取出再清状态（原件注释：ReleaseCapture 会同步清掉状态，踩过坑）*/
@@ -892,6 +1007,8 @@ function bootUI(){
       if (chord !== -1 && c === chord) clickCell(chord, "chord"); else render();
     }
   });
+
+  bootTouch(cv);
 
   /* F2 开局（原件只处理这一个按键）*/
   document.addEventListener("keydown", ev => { if (ev.key === "F2"){ ev.preventDefault(); newGame(null); } });
@@ -949,14 +1066,21 @@ function bootUI(){
     "因此判据只比较\"旗子的实虚枚数\"与\"雷的实虚枚数\"：只比数量、不比位置，\n" +
     "所以即使判据通过也可能踩雷——这是这个改版扫雷的玩法核心。\n" +
     "计雷器四行分别是四种雷\"还没被标记的枚数\"，因此可以出现负数。\n" +
-    "计时器在第一次点开格子时开始走，通关/踩雷时停止。";
+    "计时器在第一次点开格子时开始走，通关/踩雷时停止。\n\n" +
+    "————\n" +
+    "（触屏操作，手机／平板上可用）\n" +
+    "长按未翻开的格子 = 插正实旗；长按已有旗的格子 = 取消旗。\n" +
+    "有旗的格子单击 = 换成下一面旗（正实→负实→正虚→负虚→正实）。\n" +
+    "单击翻开、拖动平移画面仍是浏览器原生手势。\n" +
+    "（触屏没有中键，判据展开暂时只能在电脑上用中键／左右同按。）";
   document.getElementById("about-text").textContent =
-    "复扫雷 Complexweeper（单文件网页复刻版）\n\n" +
+    "复扫雷 Complexweeper（单文件网页复刻版 v0.1.1）\n\n" +
     "本程序是基于 青月晓 的《复扫雷 Complexweeper》复刻的网页版：\n" +
     "玩法、布雷算法、判据、连锁展开、计时计分与界面版式，\n" +
     "均按对原件 复扫雷 1.0.11.exe（Zig / x86_64-windows-gnu）的逆向分析结果重写，\n" +
     "并与原作开源仓库 1.0.12 的源码逐函数对照校验（贴图矩形表与数字贴图表完全一致），\n" +
     "贴图直接使用原件内置图集，界面文案沿用原作。\n\n" +
+    "网页版改版者：DeepSeek V4.1 Flash\n\n" +
     "原作信息：\n" +
     "  原作作者 / 版权：青月晓（Copyright © 2026 青月晓）\n" +
     "  原作开源仓库：github.com/Yueqing-Chen/complexweeper-A-minesweeper-game（代码 GPL-3.0）\n" +
@@ -992,6 +1116,7 @@ function bootUI(){
     document.getElementById("win").style.cssText = "padding:0;margin:0;border:none;background:transparent;box-shadow:none";
     document.body.style.cssText = "padding:0;margin:0;background:#000";
   }
+  if (qs.get("touchtest")) runTouchTest(qs.get("touchtest"));   /* 触屏自检（合成事件，正常使用无需关心）*/
 }
 
 function menuAction(act){
@@ -1012,7 +1137,8 @@ function menuAction(act){
 /* 脚本在浏览器里跑界面；在 Node 里只导出引擎，供回归自检使用 */
 if (typeof document !== "undefined") bootUI();
 if (typeof module !== "undefined" && module.exports)
-  module.exports = {Board, mulberry32, layoutOf, facePos, counterCells, counterGlyphs, SPR, D_TO_SPRITE, RECT, PRESETS};
+  module.exports = {Board, mulberry32, layoutOf, facePos, counterCells, counterGlyphs,
+                    SPR, D_TO_SPRITE, RECT, PRESETS, tapStage, holdStage};
 </script>
 </body>
 </html>
